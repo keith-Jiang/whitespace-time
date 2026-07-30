@@ -4,12 +4,27 @@
    象限与深浅作为属性编码在卡片上；完成状态按「出现日期」记录。
    ============================================================ */
 
-const STORE_KEY = "deepweek.tasks.v1";
-const IDEAS_KEY = "deepweek.ideas.v1";
-const SETTINGS_KEY = "deepweek.settings.v1";
-const TIMER_KEY = "deepweek.timer.v1";
-const LANG_KEY = "deepweek.lang";
+const STORE_KEY = "whitespace.tasks.v1";
+const IDEAS_KEY = "whitespace.ideas.v1";
+const SETTINGS_KEY = "whitespace.settings.v1";
+const TIMER_KEY = "whitespace.timer.v1";
+const LANG_KEY = "whitespace.lang";
 const DEFAULT_DEEP_GOAL = 240; // 每日深度时长目标默认 4 小时
+
+/* 旧键一次性迁移：早期项目名 deepweek.* → whitespace.*，老数据无感搬家 */
+(function migrateLegacyKeys() {
+  [
+    ["deepweek.tasks.v1", STORE_KEY],
+    ["deepweek.ideas.v1", IDEAS_KEY],
+    ["deepweek.settings.v1", SETTINGS_KEY],
+    ["deepweek.timer.v1", TIMER_KEY],
+    ["deepweek.lang", LANG_KEY],
+  ].forEach(([oldKey, newKey]) => {
+    if (localStorage.getItem(newKey) === null && localStorage.getItem(oldKey) !== null) {
+      localStorage.setItem(newKey, localStorage.getItem(oldKey));
+    }
+  });
+})();
 
 /* ---------- 国际化 ---------- */
 const I18N = {
@@ -848,7 +863,7 @@ document.getElementById("exportBtn").addEventListener("click", () => {
     { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `deepweek-backup-${fmtDate(new Date())}.json`;
+  a.download = `whitespace-backup-${fmtDate(new Date())}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
 });
@@ -1216,7 +1231,7 @@ document.getElementById("backupBtn").addEventListener("click", async () => {
   try {
     if (backupState === "off") {
       backupHandle = await window.showSaveFilePicker({
-        suggestedName: "deepweek-data.json",
+        suggestedName: "whitespace-data.json",
         types: [{ description: "JSON", accept: { "application/json": [".json"] } }],
       });
       await idbSet(BACKUP_HANDLE_KEY, backupHandle);

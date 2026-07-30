@@ -89,13 +89,8 @@ whitespace-time/
 }
 ```
 
-数据存储于 `localStorage["deepweek.tasks.v1"]`（存储键沿用早期项目名 `deepweek.*` 前缀，以保老用户数据兼容），导出备份只需在控制台执行
-`copy(localStorage.getItem("deepweek.tasks.v1"))`。
-
-## Roadmap
-
-- [ ] Focus Mode：点开深度任务进入全屏专注 + 计时
-- [ ] AI 泳道升级为独立面板（收割窗口提醒）
+数据存储于 `localStorage["whitespace.tasks.v1"]`，导出备份只需在控制台执行
+`copy(localStorage.getItem("whitespace.tasks.v1"))`。
 
 ## License
 
