@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>留白 · Whitespace</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='4' width='56' height='56' rx='12' fill='%232e5339' transform='rotate(-4 32 32)'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='34' font-family='Songti SC,SimSun,serif' font-weight='700' fill='%23f4efe6' transform='rotate(-4 32 32)'%3E白%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,900;1,9..144,400&family=Noto+Serif+SC:wght@600;900&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="paper-grain" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark" aria-hidden="true">白</div>
+    <div class="brand-text">
+      <h1 data-i18n="brandName">留白</h1>
+      <p data-i18n="tagline">为深度思考留白</p>
+    </div>
+  </div>
+
+  <div class="week-nav">
+    <button class="nav-btn" id="prevWeek" title="上一周" aria-label="上一周">‹</button>
+    <div class="week-label">
+      <span id="weekRange">—</span>
+      <button id="backToday" class="today-btn" data-i18n="backToday" hidden>回到本周</button>
+    </div>
+    <button class="nav-btn" id="nextWeek" title="下一周" aria-label="下一周">›</button>
+  </div>
+
+  <div class="top-stats">
+    <div class="stat deep-stat" id="deepStat" title="本周已完成的深度时长 / 计划深度时长">
+      <span class="stat-label" data-i18n="deepLabel">本周深度</span>
+      <div class="stat-row">
+        <span class="stat-value"><em id="deepDone">0</em><i>/</i><span id="deepPlanned">0</span><small>h</small></span>
+        <span class="rhythm" id="deepRhythm" aria-hidden="true"></span>
+      </div>
+    </div>
+    <button class="stat ai-stat" id="aiBadge" title="等待 AI 的任务 · 点击筛选">
+      <span class="ai-dot" aria-hidden="true"></span>
+      <span class="stat-label" data-i18n="aiLabel">等待 AI</span>
+      <span class="stat-value"><em id="aiCount">0</em></span>
+    </button>
+    <button class="stat inbox-stat" id="inboxBtn" title="想法收集箱 · 快捷键 i">
+      <span class="stat-label" data-i18n="inboxLabel">收集箱</span>
+      <span class="stat-value"><em id="ideaCount">0</em></span>
+    </button>
+    <button class="lang-btn" id="langToggle" title="Switch language">EN</button>
+  </div>
+</header>
+
+<nav class="toolbar">
+  <div class="filter-group" id="quadrantFilters" role="group" aria-label="按象限筛选">
+    <button class="chip q-chip active" data-q="0"><span class="chip-dot all"></span><span data-i18n="fAll">全部</span></button>
+    <button class="chip q-chip" data-q="1"><span class="chip-dot q1"></span><span data-i18n="q1">重要 · 紧急</span></button>
+    <button class="chip q-chip" data-q="2"><span class="chip-dot q2"></span><span data-i18n="q2">重要 · 不紧急</span></button>
+    <button class="chip q-chip" data-q="3"><span class="chip-dot q3"></span><span data-i18n="q3">紧急 · 不重要</span></button>
+    <button class="chip q-chip" data-q="4"><span class="chip-dot q4"></span><span data-i18n="q4">不重要 · 不紧急</span></button>
+  </div>
+  <div class="filter-group right">
+    <button class="chip toggle-chip" id="depthFilter" data-mode="all">全部深浅</button>
+    <button class="chip toggle-chip active" id="completedToggle">显示已完成</button>
+    <button class="chip" id="settingsBtn" data-i18n="settingsBtn">⚙ 设置</button>
+    <button class="btn-primary" id="addTaskBtn" data-i18n="newTask">＋ 新任务</button>
+  </div>
+</nav>
+
+<main class="board" id="board" aria-label="本周看板"></main>
+
+<!-- 想法收集箱抽屉 -->
+<div class="drawer-scrim" id="drawerScrim"></div>
+<aside class="drawer" id="inboxDrawer" aria-label="想法收集箱">
+  <div class="drawer-head">
+    <h2 data-i18n="inboxTitle">想法收集箱</h2>
+    <button class="modal-close" id="inboxClose" aria-label="关闭">×</button>
+  </div>
+  <p class="drawer-hint" data-i18n="inboxHint">长期、不紧急的念头先放这里，不随周切换消失。</p>
+  <form class="idea-form" id="ideaForm">
+    <input type="text" id="ideaInput" placeholder="记下一闪而过的念头…" maxlength="120" autocomplete="off" />
+    <button type="submit" class="btn-primary" data-i18n="ideaAdd">收下</button>
+  </form>
+  <ul class="idea-list" id="ideaList"></ul>
+</aside>
+
+<!-- 设置弹层 -->
+<div class="settings-pop" id="settingsPop" hidden>
+  <label class="field">
+    <span class="field-label" data-i18n="goalLabel">每日深度目标</span>
+    <select id="goalSelect">
+      <option value="60" data-i18n="d60">1 小时</option>
+      <option value="120" data-i18n="d120">2 小时</option>
+      <option value="180" data-i18n="d180">3 小时</option>
+      <option value="240" data-i18n="d240">4 小时</option>
+      <option value="300" data-i18n="d300">5 小时</option>
+      <option value="360" data-i18n="d360">6 小时</option>
+      <option value="480" data-i18n="d480">8 小时</option>
+    </select>
+  </label>
+  <div class="settings-actions">
+    <button type="button" class="btn-ghost" id="exportBtn" data-i18n="exportBtn">导出数据</button>
+    <button type="button" class="btn-ghost" id="importBtn" data-i18n="importBtn">导入数据</button>
+    <input type="file" id="importFile" accept="application/json,.json" hidden />
+  </div>
+  <div class="field backup-field">
+    <span class="field-label" data-i18n="backupLabel">文件自动备份</span>
+    <button type="button" class="btn-ghost" id="backupBtn">…</button>
+    <p class="backup-status" id="backupStatus"></p>
+  </div>
+</div>
+
+<!-- 本周复盘弹层（内容由 JS 生成） -->
+<div class="review-pop" id="reviewPop" hidden></div>
+
+<!-- 任务编辑弹窗 -->
+<div class="modal-backdrop" id="modalBackdrop" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-head">
+      <h2 id="modalTitle">新任务</h2>
+      <button class="modal-close" id="modalClose" aria-label="关闭">×</button>
+    </div>
+
+    <form id="taskForm">
+      <label class="field">
+        <span class="field-label" data-i18n="fTask">任务</span>
+        <input type="text" id="fTitle" placeholder="写下要做的事…" required autocomplete="off" maxlength="60" />
+      </label>
+
+      <div class="field">
+        <span class="field-label"><span data-i18n="fDepthLabel">深浅</span> <i class="hint" data-i18n="depthHint">深度任务计入每日深度时长</i></span>
+        <div class="seg" id="fDepth">
+          <button type="button" data-v="deep" class="active" data-i18n="btnDeep">🜁 深度</button>
+          <button type="button" data-v="shallow" data-i18n="btnShallow">碎片</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="field-label" data-i18n="fCycleLabel">周期</span>
+        <div class="seg" id="fCycle">
+          <button type="button" data-v="once" class="active" data-i18n="cOnce">一次</button>
+          <button type="button" data-v="weekly" data-i18n="cWeekly">每周</button>
+          <button type="button" data-v="monthly" data-i18n="cMonthly">每月</button>
+        </div>
+      </div>
+
+      <div class="field cycle-detail" id="detailOnce">
+        <span class="field-label" data-i18n="fDate">日期</span>
+        <input type="date" id="fDate" />
+      </div>
+      <div class="field cycle-detail" id="detailWeekly" hidden>
+        <span class="field-label" data-i18n="fWeekday">每周几</span>
+        <div class="quick-days" id="quickDays">
+          <button type="button" data-q="all" data-i18n="scopeAll">每天</button>
+          <button type="button" data-q="workdays" data-i18n="scopeWork">工作日</button>
+          <button type="button" data-q="weekends" data-i18n="scopeWeekend">周末</button>
+        </div>
+        <div class="seg small" id="fWeekday">
+          <button type="button" data-v="0" class="active" data-i18n="wd0">一</button>
+          <button type="button" data-v="1" data-i18n="wd1">二</button>
+          <button type="button" data-v="2" data-i18n="wd2">三</button>
+          <button type="button" data-v="3" data-i18n="wd3">四</button>
+          <button type="button" data-v="4" data-i18n="wd4">五</button>
+          <button type="button" data-v="5" data-i18n="wd5">六</button>
+          <button type="button" data-v="6" data-i18n="wd6">日</button>
+        </div>
+      </div>
+      <div class="field cycle-detail" id="detailMonthly" hidden>
+        <span class="field-label" data-i18n="fMonthDay">每月几号</span>
+        <input type="number" id="fMonthDay" min="1" max="31" value="1" />
+      </div>
+
+      <div class="field">
+        <span class="field-label" data-i18n="fQuadrantLabel">象限</span>
+        <div class="quad-picker" id="fQuadrant">
+          <button type="button" data-v="1"><span class="chip-dot q1"></span><span data-i18n="q1">重要 · 紧急</span></button>
+          <button type="button" data-v="2" class="active"><span class="chip-dot q2"></span><span data-i18n="q2">重要 · 不紧急</span></button>
+          <button type="button" data-v="3"><span class="chip-dot q3"></span><span data-i18n="q3">紧急 · 不重要</span></button>
+          <button type="button" data-v="4"><span class="chip-dot q4"></span><span data-i18n="q4">不重要 · 不紧急</span></button>
+        </div>
+      </div>
+
+      <label class="field">
+        <span class="field-label" data-i18n="fNote">备注</span>
+        <textarea id="fNote" rows="2" placeholder="补充说明（可选）" maxlength="300"></textarea>
+      </label>
+
+      <div class="field-row">
+        <label class="field">
+          <span class="field-label" data-i18n="fDuration">预计时长</span>
+          <select id="fDuration">
+            <option value="0" data-i18n="dNone">无</option>
+            <option value="15" data-i18n="d15">15 分钟</option>
+            <option value="30" data-i18n="d30">30 分钟</option>
+            <option value="45" data-i18n="d45">45 分钟</option>
+            <option value="60" selected data-i18n="d60">1 小时</option>
+            <option value="90" data-i18n="d90">1.5 小时</option>
+            <option value="120" data-i18n="d120">2 小时</option>
+            <option value="180" data-i18n="d180">3 小时</option>
+            <option value="240" data-i18n="d240">4 小时</option>
+          </select>
+        </label>
+        <label class="field ai-field">
+          <span class="field-label" data-i18n="fAI">AI 状态</span>
+          <label class="ai-check">
+            <input type="checkbox" id="fWaitingAI" />
+            <span data-i18n="aiCheck">⧖ 已委托 AI，等待产出</span>
+          </label>
+        </label>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-danger" id="deleteTask" data-i18n="btnDelete" hidden>删除</button>
+        <span class="flex-spacer"></span>
+        <button type="button" class="btn-ghost" id="cancelTask" data-i18n="btnCancel">取消</button>
+        <button type="submit" class="btn-primary" id="saveTask" data-i18n="btnSave">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<footer class="footnote">
+  <p data-i18n="footnote">时间只是我垂钓的溪流。</p>
+</footer>
+
+<!-- 专注计时药丸 -->
+<div class="timer-pill" id="timerPill" hidden>
+  <span class="tp-dot" aria-hidden="true"></span>
+  <span class="tp-title" id="tpTitle"></span>
+  <b class="tp-time" id="tpTime">0:00</b>
+  <button id="tpPause" class="tp-stop tp-pause" aria-label="暂停/继续">⏸</button>
+  <button id="tpStop" class="tp-stop" aria-label="停止计时">■</button>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

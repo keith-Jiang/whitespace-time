@@ -1,0 +1,6 @@
+# 文件自动备份产物（个人数据，勿提交公开仓库）
+deepweek-data.json
+deepweek-backup-*.json
+
+# macOS
+.DS_Store
