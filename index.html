@@ -183,9 +183,15 @@
       </div>
 
       <label class="field">
-        <span class="field-label" data-i18n="fNote">备注</span>
+        <span class="field-label"><span data-i18n="fNote">备注</span> <b class="sub-date" id="noteDate"></b></span>
         <textarea id="fNote" rows="2" placeholder="补充说明（可选）" maxlength="300"></textarea>
       </label>
+
+      <div class="field">
+        <span class="field-label"><span data-i18n="fSubtasks">子任务</span> <b class="sub-date" id="subDate"></b> <i class="hint" data-i18n="subHint">把模糊拆成可执行的下一步</i></span>
+        <div class="sub-editor" id="subEditor"></div>
+        <button type="button" class="sub-add" id="subAdd" data-i18n="subAdd">＋ 子任务</button>
+      </div>
 
       <div class="field-row">
         <label class="field">

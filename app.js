@@ -44,6 +44,8 @@ const I18N = {
     meterTitle: goal => `今日深度时长（目标 ${goal}）`,
     empty: "守护这片留白",
     tagDeep: "深度", tagAI: "⧖ 等待 AI", tagAITitle: "已委托 AI，等待产出 · 在编辑弹窗中修改状态",
+    noteMark: "备注（点击编辑）：",
+    expandHint: "点击展开 · 双击编辑",
     markDone: "标记完成", unmarkDone: "取消完成",
     modalNew: "新任务", modalEdit: "编辑任务",
     placeholder: "写下要做的事…",
@@ -68,6 +70,8 @@ const I18N = {
     scopeAll: "每天", scopeWork: "工作日", scopeWeekend: "周末",
     settingsBtn: "⚙ 设置",
     fNote: "备注", notePh: "补充说明（可选）",
+    fSubtasks: "子任务", subHint: "把模糊拆成可执行的下一步", subAdd: "＋ 子任务",
+    subPh: "一个具体的下一步动作…",
     goalLabel: "每日深度目标", exportBtn: "导出数据", importBtn: "导入数据",
     importBad: "文件格式不对，导入失败",
     reviewTitle: "本周复盘", reviewTotal: "深度总计", reviewHit: "达标天数", reviewBest: "最深一天",
@@ -99,6 +103,8 @@ const I18N = {
     meterTitle: goal => `Deep hours today (goal ${goal})`,
     empty: "Protect this space.",
     tagDeep: "DEEP", tagAI: "⧖ Waiting AI", tagAITitle: "Delegated to AI · change status in the edit dialog",
+    expandHint: "Click to expand · double-click to edit",
+    noteMark: "Note (click to edit): ",
     markDone: "Mark done", unmarkDone: "Undo done",
     modalNew: "New task", modalEdit: "Edit task",
     placeholder: "What needs doing…",
@@ -123,6 +129,8 @@ const I18N = {
     scopeAll: "Every day", scopeWork: "Workdays", scopeWeekend: "Weekends",
     settingsBtn: "⚙ Settings",
     fNote: "Note", notePh: "Optional details…",
+    fSubtasks: "Subtasks", subHint: "Break vagueness into concrete next steps", subAdd: "＋ Subtask",
+    subPh: "One concrete next action…",
     goalLabel: "Daily deep goal", exportBtn: "Export data", importBtn: "Import data",
     importBad: "Invalid file, import failed",
     reviewTitle: "Week in review", reviewTotal: "Total deep", reviewHit: "Days at goal", reviewBest: "Deepest day",
@@ -153,6 +161,7 @@ let draggingFrom = null; // 拖拽起点日期（周期任务需要知道拖的�
 let clipboardTask = null; // ⌘C/⌘V 的任务剪贴板
 let timer = loadJSON(TIMER_KEY, null); // { taskId, dateStr, startTs }
 let timerTick = null;
+const expandedCards = new Set(); // 展开态的任务 id（会话内记忆）
 
 /* ---------- 存取 ---------- */
 function loadJSON(key, fallback) {
@@ -164,6 +173,7 @@ function loadJSON(key, fallback) {
 }
 function load() {
   const arr = loadJSON(STORE_KEY, null) ?? seedTasks();
+  let migrated = false;
   // 旧版「每日」任务迁移为每周多选（每日 = 周一至周日全选）
   arr.forEach(tk => {
     if (tk.cycle === "daily") {
@@ -171,8 +181,29 @@ function load() {
       tk.weekdays = tk.days === "workdays" ? [0, 1, 2, 3, 4]
         : tk.days === "weekends" ? [5, 6] : [0, 1, 2, 3, 4, 5, 6];
       delete tk.days;
+      migrated = true;
     }
+    // 旧版共享子任务清单 → 按日期独立清单（保留已有勾选记录）
+    if (Array.isArray(tk.subtasks) && tk.subtasks.length) {
+      tk.subs = tk.subs || {};
+      const dates = new Set([fmtDate(new Date())]);
+      tk.subtasks.forEach(s => Object.keys(s.done || {}).forEach(d => dates.add(d)));
+      dates.forEach(d => {
+        tk.subs[d] = tk.subtasks.map(s => ({ id: uid(), text: s.text, done: !!(s.done && s.done[d]) }));
+      });
+      migrated = true;
+    }
+    delete tk.subtasks;
+    // 旧版共享备注 → 按日期独立备注（迁到今天）
+    if (typeof tk.note === "string" && tk.note) {
+      tk.notes = tk.notes || {};
+      tk.notes[fmtDate(new Date())] = tk.note;
+      migrated = true;
+    }
+    delete tk.note;
   });
+  // 迁移结果立即落盘（不走 save，避免引用尚未初始化的备份状态）
+  if (migrated) localStorage.setItem(STORE_KEY, JSON.stringify(arr));
   return arr;
 }
 function save() {
@@ -440,19 +471,28 @@ function updateStats() {
 
 function renderCard(task, dateStr, index, overdue = false) {
   const done = isDone(task, dateStr);
+  const subs = (task.subs && task.subs[dateStr]) || []; // 子任务清单按出现日期独立
+  const note = (task.notes && task.notes[dateStr]) || ""; // 备注同样按日独立
+  const expandable = subs.length > 0 || !!note;
+  const expanded = expandable && expandedCards.has(task.id);
   const el = document.createElement("article");
-  el.className = `card ${task.depth === "deep" ? "deep" : ""} ${done ? "done" : ""} ${task.waitingAI ? "waiting-ai" : ""} ${overdue ? "overdue" : ""}`;
+  el.className = `card ${task.depth === "deep" ? "deep" : ""} ${done ? "done" : ""} ${task.waitingAI ? "waiting-ai" : ""} ${overdue ? "overdue" : ""} ${expandable ? "expandable" : ""} ${expanded ? "expanded" : ""}`;
   el.style.setProperty("--qc", `var(--q${task.quadrant})`);
   el.style.animationDelay = `${Math.min(index * 40, 240)}ms`;
   el.dataset.tid = task.id;
   el.dataset.date = dateStr;
+  if (expandable) el.title = t("expandHint");
 
   const tags = [];
   if (overdue) tags.push(`<span class="tag overdue-mark">${t("overdue")}</span>`);
   if (task.depth === "deep") tags.push(`<span class="tag deep-mark">${t("tagDeep")}</span>`);
   if (task.cycle !== "once") tags.push(`<span class="tag cycle">${cycleLabel(task)}</span>`);
   if (task.waitingAI) tags.push(`<span class="tag ai-mark" title="${t("tagAITitle")}">${t("tagAI")}</span>`);
-  if (task.note) tags.push(`<span class="tag note-mark" title="${escapeHtml(task.note)}">✎</span>`);
+  if (note) tags.push(`<button type="button" class="tag note-mark" data-edit title="${t("noteMark")}${escapeHtml(note)}">✎</button>`);
+  if (subs.length) {
+    const dn = subs.filter(s => s.done).length;
+    tags.push(`<span class="tag progress${dn === subs.length ? " full" : ""}">☑ ${dn}/${subs.length}</span>`);
+  }
   if (task.duration) tags.push(`<span class="tag dur">${minToLabel(task.duration)}</span>`);
   const trackedMin = (task.tracked && task.tracked[dateStr]) || 0;
   if (trackedMin) tags.push(`<span class="tag tracked" title="${t("trackedTitle")}">⏱ ${minToLabel(trackedMin)}</span>`);
@@ -465,7 +505,15 @@ function renderCard(task, dateStr, index, overdue = false) {
         <svg viewBox="0 0 10 10" fill="none"><path d="M1.5 5.5 4 8 8.5 2" stroke="var(--paper)" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
       <div class="card-title">${escapeHtml(task.title)}</div>
+      ${expandable ? `<span class="card-caret" aria-hidden="true">›</span>` : ""}
     </div>
+    ${expandable ? `<div class="card-detail"><div class="cd-inner">
+      ${note ? `<p class="card-note">${escapeHtml(note)}</p>` : ""}
+      ${subs.length ? `<ul class="sub-list">${subs.map(s => `
+        <li class="sub-item${s.done ? " done" : ""}" data-sid="${s.id}">
+          <button type="button" class="sub-check" aria-label="子任务完成"></button><span>${escapeHtml(s.text)}</span>
+        </li>`).join("")}</ul>` : ""}
+    </div></div>` : ""}
     <div class="card-meta">${tags.join("")}</div>`;
 
   el.querySelector(".card-check").addEventListener("click", e => {
@@ -514,7 +562,40 @@ function renderCard(task, dateStr, index, overdue = false) {
     if (timer && timer.taskId === task.id && timer.dateStr === dateStr) stopTimer();
     else startTimer(task.id, dateStr);
   });
-  el.addEventListener("click", () => openModal(task.id));
+  // ✐ 铅笔：长得像编辑按钮，那就是编辑按钮
+  const editTag = el.querySelector("[data-edit]");
+  if (editTag) editTag.addEventListener("click", e => {
+    e.stopPropagation();
+    openModal(task.id, { subDate: dateStr });
+  });
+  // 单击：可展开的卡片切换展开/收起；否则直接进编辑。双击：始终进编辑
+  el.addEventListener("click", () => {
+    if (!expandable) { openModal(task.id, { subDate: dateStr }); return; }
+    if (expandedCards.has(task.id)) expandedCards.delete(task.id);
+    else expandedCards.add(task.id);
+    el.classList.toggle("expanded");
+  });
+  el.addEventListener("dblclick", e => {
+    e.stopPropagation();
+    if (expandable) openModal(task.id, { subDate: dateStr }); // 两次单击已互抵，展开态不变
+  });
+
+  // 子任务勾选：清单本身已按日独立，直接翻布尔；局部更新不重建看板
+  el.querySelectorAll(".sub-check").forEach(btn => btn.addEventListener("click", e => {
+    e.stopPropagation();
+    const li = e.currentTarget.closest(".sub-item");
+    const sub = subs.find(s => s.id === li.dataset.sid);
+    if (!sub) return;
+    sub.done = !sub.done;
+    save();
+    li.classList.toggle("done", sub.done);
+    const prog = el.querySelector(".tag.progress");
+    if (prog) {
+      const dn = subs.filter(s => s.done).length;
+      prog.textContent = `☑ ${dn}/${subs.length}`;
+      prog.classList.toggle("full", dn === subs.length);
+    }
+  }));
 
   // 所有周期都可拖：一次改日期；每周把该周几挪到目标周几；每月改到目标几号
   el.draggable = true;
@@ -589,6 +670,37 @@ function syncCycleDetail() {
 }
 
 let modalClosingTimer = null;
+let modalSubtasks = []; // 弹窗内编辑中的子任务副本
+let modalSubDate = null; // 正在编辑哪一天的子任务清单
+
+function renderSubEditor(focusLast = false) {
+  const box = document.getElementById("subEditor");
+  box.innerHTML = modalSubtasks.map(s => `
+    <div class="sub-row" data-sid="${s.id}">
+      <input type="text" value="${escapeHtml(s.text)}" placeholder="${t("subPh")}" maxlength="80" />
+      <button type="button" class="sub-del" aria-label="删除">×</button>
+    </div>`).join("");
+  if (focusLast) box.querySelector(".sub-row:last-child input")?.focus();
+}
+
+function addSubtaskRow() {
+  modalSubtasks.push({ id: uid(), text: "", done: false });
+  renderSubEditor(true);
+}
+
+document.getElementById("subAdd").addEventListener("click", () => addSubtaskRow());
+document.getElementById("subEditor").addEventListener("input", e => {
+  const row = e.target.closest(".sub-row");
+  const s = row && modalSubtasks.find(x => x.id === row.dataset.sid);
+  if (s) s.text = e.target.value;
+});
+document.getElementById("subEditor").addEventListener("click", e => {
+  const del = e.target.closest(".sub-del");
+  if (!del) return;
+  const row = del.closest(".sub-row");
+  modalSubtasks = modalSubtasks.filter(x => x.id !== row.dataset.sid);
+  renderSubEditor();
+});
 
 function openModal(id = null, preset = null) {
   // 若正在播关闭动画，立即中断，避免新弹窗被延时隐藏
@@ -609,7 +721,15 @@ function openModal(id = null, preset = null) {
   document.getElementById("fMonthDay").value = t0?.monthDay ?? 1;
   document.getElementById("fDuration").value = t0?.duration ?? 60;
   document.getElementById("fWaitingAI").checked = t0?.waitingAI ?? false;
-  document.getElementById("fNote").value = t0?.note ?? "";
+  // 子任务与备注均按日独立：编辑的是「被点开那天」的内容
+  modalSubDate = preset?.subDate ?? preset?.date ?? fmtDate(new Date());
+  document.getElementById("fNote").value = t0?.notes?.[modalSubDate] ?? "";
+  modalSubtasks = JSON.parse(JSON.stringify(t0?.subs?.[modalSubDate] ?? []));
+  const [, sm, sd] = modalSubDate.split("-");
+  const dLabel = `${+sm}/${+sd}`;
+  document.getElementById("subDate").textContent = dLabel;
+  document.getElementById("noteDate").textContent = dLabel;
+  renderSubEditor();
   syncCycleDetail();
 
   backdrop.hidden = false;
@@ -639,11 +759,21 @@ form.addEventListener("submit", e => {
     quadrant: Number(segValue("fQuadrant")),
     duration: Number(document.getElementById("fDuration").value),
     waitingAI: document.getElementById("fWaitingAI").checked,
-    note: document.getElementById("fNote").value.trim(),
     date: document.getElementById("fDate").value || fmtDate(new Date()),
     weekdays: getWeekdays(),
     monthDay: Math.min(31, Math.max(1, Number(document.getElementById("fMonthDay").value) || 1)),
   };
+
+  // 子任务与备注只写回当前编辑的那一天，其它日期不受影响
+  const cleaned = modalSubtasks.map(s => ({ ...s, text: s.text.trim() })).filter(s => s.text);
+  const prev = editingId ? tasks.find(x => x.id === editingId) : null;
+  data.subs = { ...(prev?.subs || {}) };
+  if (cleaned.length) data.subs[modalSubDate] = cleaned;
+  else delete data.subs[modalSubDate];
+  const noteVal = document.getElementById("fNote").value.trim();
+  data.notes = { ...(prev?.notes || {}) };
+  if (noteVal) data.notes[modalSubDate] = noteVal;
+  else delete data.notes[modalSubDate];
 
   if (editingId) {
     Object.assign(tasks.find(x => x.id === editingId), data);
@@ -670,6 +800,12 @@ document.addEventListener("keydown", e => {
   if (!backdrop.hidden) {
     const tag = document.activeElement.tagName;
     if (e.key === "Escape") { closeModal(); return; }
+    // 子任务输入框内回车 = 追加下一条，顺手连拆
+    if (e.key === "Enter" && document.activeElement.closest?.("#subEditor")) {
+      e.preventDefault();
+      addSubtaskRow();
+      return;
+    }
     if (e.key === "Enter" && tag !== "TEXTAREA" && tag !== "BUTTON") {
       e.preventDefault();
       form.requestSubmit(); // 回车即保存（备注框内回车仍是换行）
@@ -695,6 +831,7 @@ document.addEventListener("keydown", e => {
       const tk = cardEl && tasks.find(x => x.id === cardEl.dataset.tid);
       if (tk) {
         clipboardTask = JSON.parse(JSON.stringify(tk));
+        clipboardTask._fromDate = cardEl.dataset.date; // 记住复制的是哪一天，粘贴时携带当日子任务
         showToast(`${t("copiedToast")}「${tk.title}」`);
         e.preventDefault();
       }
@@ -706,6 +843,7 @@ document.addEventListener("keydown", e => {
       const tk = cardEl && tasks.find(x => x.id === cardEl.dataset.tid);
       if (tk) {
         clipboardTask = JSON.parse(JSON.stringify(tk));
+        clipboardTask._fromDate = cardEl.dataset.date;
         if (timer && timer.taskId === tk.id) stopTimer({ silent: true, complete: false }); // 被剪任务若在计时，先结算
         if (tk.cycle === "weekly") {
           const wd = (new Date(`${cardEl.dataset.date}T00:00:00`).getDay() + 6) % 7;
@@ -733,6 +871,12 @@ document.addEventListener("keydown", e => {
         date: ds,
         completions: {},
         tracked: {},
+        subs: clipboardTask._fromDate && clipboardTask.subs?.[clipboardTask._fromDate]
+          ? { [ds]: clipboardTask.subs[clipboardTask._fromDate].map(s => ({ ...s, id: uid(), done: false })) }
+          : {},
+        notes: clipboardTask._fromDate && clipboardTask.notes?.[clipboardTask._fromDate]
+          ? { [ds]: clipboardTask.notes[clipboardTask._fromDate] }
+          : {},
       });
       save(); render();
       showToast(`${t("pastedToast")}「${clipboardTask.title}」`);

@@ -600,8 +600,11 @@ body.en .day-col.today .day-name b::after { content: "TODAY"; letter-spacing: 0.
   background: transparent;
   border: 1px solid var(--line);
   color: var(--ink-soft);
-  cursor: help;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
 }
+.tag.note-mark:hover { border-color: var(--pine); color: var(--pine); }
 .tag.tracked {
   background: transparent;
   border: 1px solid rgba(46, 83, 57, 0.35);
@@ -609,6 +612,13 @@ body.en .day-col.today .day-name b::after { content: "TODAY"; letter-spacing: 0.
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+.tag.progress {
+  background: var(--paper-3);
+  color: var(--ink-soft);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.tag.progress.full { background: var(--pine); color: var(--paper); }
 .tag.timer-btn {
   background: transparent;
   border: 1px solid var(--line);
@@ -628,6 +638,120 @@ body.en .day-col.today .day-name b::after { content: "TODAY"; letter-spacing: 0.
   font-variant-numeric: tabular-nums;
   animation: pulse 2.4s ease-in-out infinite;
 }
+
+/* 展开区：默认折叠，点一下丝滑展开（grid-rows 高度过渡） */
+.card-detail {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.card-detail .cd-inner { overflow: hidden; min-height: 0; }
+.card.expanded .card-detail { grid-template-rows: 1fr; }
+
+.card-caret {
+  margin-left: auto;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--ink-faint);
+  transform: rotate(0deg);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  flex-shrink: 0;
+}
+.card.expanded .card-caret { transform: rotate(90deg); color: var(--pine); }
+
+.card-note {
+  margin: 7px 0 0 24px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--ink-faint);
+  word-break: break-word;
+  border-left: 2px solid var(--line);
+  padding-left: 8px;
+}
+
+/* 卡片上的子任务清单：直接可勾的下一步动作 */
+.sub-list {
+  list-style: none;
+  margin: 7px 0 0 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sub-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  word-break: break-word;
+}
+.sub-check {
+  width: 12px; height: 12px;
+  min-width: 12px;
+  margin-top: 2px;
+  border: 1.5px solid var(--ink-faint);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s;
+}
+.sub-check:hover { border-color: var(--pine); transform: scale(1.15); }
+.sub-item.done .sub-check { background: var(--pine); border-color: var(--pine); }
+.sub-item.done span { text-decoration: line-through; opacity: 0.55; }
+
+/* 弹窗内子任务编辑器 */
+.sub-date {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--pine);
+  background: var(--pine-tint);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-variant-numeric: tabular-nums;
+}
+.sub-editor { display: flex; flex-direction: column; gap: 6px; }
+.sub-row { display: flex; gap: 6px; align-items: center; }
+.sub-row input {
+  flex: 1;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.sub-row input:focus { border-color: var(--pine); }
+.sub-del {
+  width: 24px; height: 24px;
+  min-width: 24px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-faint);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.sub-del:hover { border-color: var(--q1); color: var(--q1); }
+.sub-add {
+  align-self: flex-start;
+  padding: 5px 14px;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--ink-faint);
+  cursor: pointer;
+  transition: all 0.14s;
+}
+.sub-add:hover { border-color: var(--pine); border-style: solid; color: var(--pine); }
 
 /* 拖拽：仅一次性任务 */
 .card[draggable="true"] { cursor: grab; }
