@@ -322,6 +322,51 @@ function dayEntries(date, ds, todayStr) {
 /* ---------- 渲染 ---------- */
 const board = document.getElementById("board");
 
+/* 排序：逾期 → 深度 → 象限（紧急重要 → 紧急不重要 → 重要不紧急 → 不紧急不重要） */
+const Q_ORDER = { 1: 0, 3: 1, 2: 2, 4: 3 };
+function visibleEntries(date, ds, todayStr) {
+  return dayEntries(date, ds, todayStr)
+    .filter(({ t }) => filters.quadrant === 0 || t.quadrant === filters.quadrant)
+    .filter(({ t }) => filters.depth === "all" || t.depth === filters.depth)
+    .filter(({ t }) => filters.showCompleted || !isDone(t, ds))
+    .filter(({ t }) => !filters.aiOnly || t.waitingAI)
+    .sort((x, y) =>
+      x.overdue !== y.overdue ? (x.overdue ? -1 : 1)
+      : x.t.depth !== y.t.depth ? (x.t.depth === "deep" ? -1 : 1)
+      : Q_ORDER[x.t.quadrant] - Q_ORDER[y.t.quadrant]);
+}
+
+/* 只重建某一列的任务区：新增/移入的卡片播入场动画，其余静止不闪 */
+function refreshColumn(ds, animateId = null) {
+  const col = board.querySelector(`.day-col[data-date="${ds}"]`);
+  if (!col) return; // 目标日期不在本周视图，无需动 DOM
+  const date = new Date(`${ds}T00:00:00`);
+  const todayStr = fmtDate(new Date());
+  const visible = visibleEntries(date, ds, todayStr);
+  const body = col.querySelector(".day-body");
+  body.innerHTML = "";
+  if (!visible.length) {
+    body.innerHTML = `<div class="day-empty">${t("empty")}</div>`;
+  } else {
+    visible.forEach((entry, i) => {
+      const el = renderCard(entry.t, ds, i, entry.overdue);
+      if (entry.t.id === animateId) el.style.animationDelay = "0ms";
+      else el.style.animation = "none";
+      body.appendChild(el);
+    });
+  }
+}
+
+/* 卡片离场：高度收拢 + 淡出，动画结束后才真正移除 */
+function animateRemoveCard(el, done) {
+  el.style.height = `${el.offsetHeight}px`;
+  el.style.overflow = "hidden";
+  void el.offsetHeight; // 强制回流，确保高度过渡生效
+  el.classList.add("leaving");
+  el.style.height = "0px";
+  setTimeout(done, 320);
+}
+
 function render() {
   const dates = weekDates(weekOffset);
   const todayStr = fmtDate(new Date());
@@ -340,19 +385,7 @@ function render() {
     if (idx >= 5) col.classList.add("weekend");
     if (ds === todayStr) col.classList.add("today");
 
-    const occ = dayEntries(date, ds, todayStr);
-
-    // 排序：逾期 → 深度 → 象限（紧急重要 → 紧急不重要 → 重要不紧急 → 不紧急不重要）
-    const Q_ORDER = { 1: 0, 3: 1, 2: 2, 4: 3 };
-    const visible = occ
-      .filter(({ t }) => filters.quadrant === 0 || t.quadrant === filters.quadrant)
-      .filter(({ t }) => filters.depth === "all" || t.depth === filters.depth)
-      .filter(({ t }) => filters.showCompleted || !isDone(t, ds))
-      .filter(({ t }) => !filters.aiOnly || t.waitingAI)
-      .sort((x, y) =>
-        x.overdue !== y.overdue ? (x.overdue ? -1 : 1)
-        : x.t.depth !== y.t.depth ? (x.t.depth === "deep" ? -1 : 1)
-        : Q_ORDER[x.t.quadrant] - Q_ORDER[y.t.quadrant]);
+    const visible = visibleEntries(date, ds, todayStr);
 
     col.innerHTML = `
       <div class="day-head">
@@ -410,7 +443,13 @@ function render() {
       } else if (tk.cycle === "monthly") {
         tk.monthDay = date.getDate();
       }
-      save(); render();
+      save();
+      // 局部动画：旧列收拢消失，新列滑入，不重建整板
+      const oldEl = findCardEl(tk.id, from);
+      if (oldEl) animateRemoveCard(oldEl, () => refreshColumn(from));
+      else refreshColumn(from);
+      refreshColumn(ds, tk.id);
+      updateStats();
     });
 
     board.appendChild(col);
@@ -854,7 +893,11 @@ document.addEventListener("keydown", e => {
         } else {
           tasks = tasks.filter(x => x.id !== tk.id);
         }
-        save(); render();
+        save();
+        // 离场动画后只刷这一列
+        const dsCut = cardEl.dataset.date;
+        animateRemoveCard(cardEl, () => refreshColumn(dsCut));
+        updateStats();
         showToast(`${t("cutToast")}「${clipboardTask.title}」`);
         e.preventDefault();
       }
@@ -864,7 +907,7 @@ document.addEventListener("keydown", e => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v" && clipboardTask) {
       const colEl = document.querySelector(".day-col:hover");
       const ds = colEl?.dataset.date ?? fmtDate(new Date());
-      tasks.push({
+      const newTask = {
         ...clipboardTask,
         id: uid(),
         cycle: "once",
@@ -877,8 +920,12 @@ document.addEventListener("keydown", e => {
         notes: clipboardTask._fromDate && clipboardTask.notes?.[clipboardTask._fromDate]
           ? { [ds]: clipboardTask.notes[clipboardTask._fromDate] }
           : {},
-      });
-      save(); render();
+      };
+      delete newTask._fromDate;
+      tasks.push(newTask);
+      save();
+      refreshColumn(ds, newTask.id); // 只刷目标列，新卡片播入场动画
+      updateStats();
       showToast(`${t("pastedToast")}「${clipboardTask.title}」`);
       e.preventDefault();
       return;

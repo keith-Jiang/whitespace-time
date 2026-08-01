@@ -756,6 +756,24 @@ body.en .day-col.today .day-name b::after { content: "TODAY"; letter-spacing: 0.
 /* 拖拽：仅一次性任务 */
 .card[draggable="true"] { cursor: grab; }
 .card.dragging { opacity: 0.45; transform: scale(0.97) rotate(-1deg); }
+
+/* 卡片离场：高度收拢 + 淡出（剪切 / 拖走时） */
+.card.leaving {
+  opacity: 0;
+  transform: scale(0.94);
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin-bottom: -8px; /* 抵消列 gap，收拢更顺 */
+  border-top-width: 0;
+  border-bottom-width: 0;
+  pointer-events: none;
+  transition:
+    height 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.2s ease,
+    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    padding 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    margin 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
 .day-col.drop-target .day-body {
   outline: 2px dashed rgba(46, 83, 57, 0.45);
   outline-offset: 4px;
