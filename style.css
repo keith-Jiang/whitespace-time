@@ -757,6 +757,21 @@ body.en .day-col.today .day-name b::after { content: "TODAY"; letter-spacing: 0.
 .card[draggable="true"] { cursor: grab; }
 .card.dragging { opacity: 0.45; transform: scale(0.97) rotate(-1deg); }
 
+/* 同类排序的插入指示线（上 / 下） */
+.card.drop-above::before,
+.card.drop-below::before {
+  content: "";
+  position: absolute;
+  left: 6px; right: 6px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--pine);
+  box-shadow: 0 0 6px rgba(46, 83, 57, 0.5);
+  z-index: 2;
+}
+.card.drop-above::before { top: -6px; }
+.card.drop-below::before { bottom: -5px; }
+
 /* 卡片离场：高度收拢 + 淡出（剪切 / 拖走时） */
 .card.leaving {
   opacity: 0;
@@ -1123,6 +1138,21 @@ body.en .day-col.today .day-name b::after { content: "TODAY"; letter-spacing: 0.
   font-size: 13px;
   line-height: 1.5;
   word-break: break-word;
+  cursor: text;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+.idea-item p:hover { background: rgba(46, 83, 57, 0.06); }
+.idea-item .idea-edit {
+  width: 100%;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+  border: 1px solid var(--pine);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
+  outline: none;
 }
 .idea-meta {
   display: flex;

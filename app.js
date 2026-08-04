@@ -82,6 +82,7 @@ const I18N = {
     backupResume: "恢复自动备份（需授权）", backupOn: "每次改动自动写入",
     backupSaved: "已写入", backupUnsupported: "当前浏览器不支持（请用 Chrome / Edge）",
     copiedToast: "已复制", pastedToast: "已粘贴", cutToast: "已剪切",
+    undoneToast: "已撤销删除", undoEmpty: "暂无可撤销的删除", ideaEditHint: "点击文字可编辑",
     d300: "5 小时", d360: "6 小时", d480: "8 小时",
   },
   en: {
@@ -141,6 +142,7 @@ const I18N = {
     backupResume: "Resume auto-backup (grant access)", backupOn: "Writes on every change",
     backupSaved: "Saved", backupUnsupported: "Not supported in this browser (use Chrome / Edge)",
     copiedToast: "Copied", pastedToast: "Pasted", cutToast: "Cut",
+    undoneToast: "Restored", undoEmpty: "Nothing to undo", ideaEditHint: "Click text to edit",
     d300: "5 hours", d360: "6 hours", d480: "8 hours",
   },
 };
@@ -158,6 +160,7 @@ let editingId = null;
 let convertingIdeaId = null; // 正在从想法转任务
 let draggingId = null;
 let draggingFrom = null; // 拖拽起点日期（周期任务需要知道拖的是哪一天）
+let draggingOverdue = false; // 起点卡片是否处于逾期态（同类判定用）
 let clipboardTask = null; // ⌘C/⌘V 的任务剪贴板
 let timer = loadJSON(TIMER_KEY, null); // { taskId, dateStr, startTs }
 let timerTick = null;
@@ -641,13 +644,51 @@ function renderCard(task, dateStr, index, overdue = false) {
   el.addEventListener("dragstart", () => {
     draggingId = task.id;
     draggingFrom = dateStr;
+    draggingOverdue = overdue;
     el.classList.add("dragging");
   });
   el.addEventListener("dragend", () => {
     draggingId = null;
     draggingFrom = null;
+    draggingOverdue = false;
     el.classList.remove("dragging");
     document.querySelectorAll(".drop-target").forEach(c => c.classList.remove("drop-target"));
+    document.querySelectorAll(".drop-above, .drop-below").forEach(c => c.classList.remove("drop-above", "drop-below"));
+  });
+
+  /* 同列同类（深浅 + 象限 + 逾期态均相同）内可上下拖动排序；
+     跨类或跨列不拦截，交给列级规则处理 */
+  const sameGroupAsDragging = () => {
+    if (!draggingId || draggingId === task.id || draggingFrom !== dateStr) return false;
+    const src = tasks.find(x => x.id === draggingId);
+    return !!src && src.depth === task.depth && src.quadrant === task.quadrant && draggingOverdue === overdue;
+  };
+  el.addEventListener("dragover", e => {
+    if (!sameGroupAsDragging()) return; // 冒泡给列，走整列高亮
+    e.preventDefault();
+    e.stopPropagation(); // 同类排序用插入线，不触发整列高亮
+    const rect = el.getBoundingClientRect();
+    const before = e.clientY < rect.top + rect.height / 2;
+    el.classList.toggle("drop-above", before);
+    el.classList.toggle("drop-below", !before);
+  });
+  el.addEventListener("dragleave", () => el.classList.remove("drop-above", "drop-below"));
+  el.addEventListener("drop", e => {
+    el.classList.remove("drop-above", "drop-below");
+    if (!sameGroupAsDragging()) return; // 非同类：冒泡给列级规则
+    e.preventDefault();
+    e.stopPropagation();
+    // 稳定排序下，tasks 数组顺序即同组内的展示顺序 —— 移动数组位置即持久化排序
+    const rect = el.getBoundingClientRect();
+    const before = e.clientY < rect.top + rect.height / 2;
+    const srcIdx = tasks.findIndex(x => x.id === draggingId);
+    if (srcIdx < 0) return;
+    const [moved] = tasks.splice(srcIdx, 1);
+    let dstIdx = tasks.findIndex(x => x.id === task.id);
+    if (!before) dstIdx += 1;
+    tasks.splice(dstIdx, 0, moved);
+    save();
+    refreshColumn(dateStr, moved.id);
   });
   return el;
 }
@@ -828,6 +869,8 @@ form.addEventListener("submit", e => {
 
 document.getElementById("deleteTask").addEventListener("click", () => {
   if (!editingId) return;
+  const tk = tasks.find(x => x.id === editingId);
+  if (tk) pushUndo(tk.title); // 删除前快照，⌘Z 可撤回
   tasks = tasks.filter(t => t.id !== editingId);
   save(); closeModal(); render();
 });
@@ -864,6 +907,12 @@ document.addEventListener("keydown", e => {
   }
   const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
   if (!typing) {
+    // ⌘/Ctrl+Z：撤销最近一次删除（删任务 / 剪切 / 删想法）
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+      e.preventDefault();
+      undo();
+      return;
+    }
     // ⌘/Ctrl+C：复制鼠标悬停的卡片（有选中文本时不拦截系统复制）
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c" && !window.getSelection().toString()) {
       const cardEl = document.querySelector(".card:hover");
@@ -881,6 +930,7 @@ document.addEventListener("keydown", e => {
       const cardEl = document.querySelector(".card:hover");
       const tk = cardEl && tasks.find(x => x.id === cardEl.dataset.tid);
       if (tk) {
+        pushUndo(tk.title); // 剪切前快照，⌘Z 可撤回
         clipboardTask = JSON.parse(JSON.stringify(tk));
         clipboardTask._fromDate = cardEl.dataset.date;
         if (timer && timer.taskId === tk.id) stopTimer({ silent: true, complete: false }); // 被剪任务若在计时，先结算
@@ -937,6 +987,26 @@ document.addEventListener("keydown", e => {
   }
 });
 
+/* ---------- 撤销：仅针对删除类操作（删任务 / 剪切 / 删想法） ---------- */
+const undoStack = [];
+function pushUndo(title) {
+  undoStack.push({
+    title,
+    tasks: JSON.parse(JSON.stringify(tasks)),
+    ideas: JSON.parse(JSON.stringify(ideas)),
+  });
+  if (undoStack.length > 30) undoStack.shift(); // 最多保留 30 步
+}
+function undo() {
+  const snap = undoStack.pop();
+  if (!snap) { showToast(t("undoEmpty")); return; }
+  tasks = snap.tasks;
+  ideas = snap.ideas;
+  save(); saveIdeas();
+  renderIdeas(); render();
+  showToast(`${t("undoneToast")}「${snap.title}」`);
+}
+
 /* 轻提示：底部一闪而过的小药丸 */
 let toastTimer = null;
 function showToast(msg) {
@@ -987,7 +1057,7 @@ function renderIdeas() {
     const d = new Date(i.createdAt);
     return `
     <li class="idea-item" data-id="${i.id}">
-      <p>${escapeHtml(i.text)}</p>
+      <p title="${t("ideaEditHint")}">${escapeHtml(i.text)}</p>
       <div class="idea-meta">
         <span class="idea-date">${d.getMonth() + 1}/${d.getDate()}</span>
         <button type="button" class="idea-act convert" data-act="convert">${t("ideaToTask")}</button>
@@ -1012,19 +1082,55 @@ document.getElementById("ideaForm").addEventListener("submit", e => {
 });
 
 document.getElementById("ideaList").addEventListener("click", e => {
+  const li = e.target.closest(".idea-item");
+  if (!li) return;
+  const id = li.dataset.id;
   const btn = e.target.closest("[data-act]");
-  if (!btn) return;
-  const id = e.target.closest(".idea-item").dataset.id;
-  if (btn.dataset.act === "del") {
-    ideas = ideas.filter(x => x.id !== id);
-    saveIdeas(); renderIdeas();
-  } else {
+  if (btn) {
     const idea = ideas.find(x => x.id === id);
-    convertingIdeaId = id;
-    closeDrawer();
-    openModal(null, { title: idea.text });
+    if (btn.dataset.act === "del") {
+      if (idea) pushUndo(idea.text); // 删除前快照，⌘Z 可撤回
+      ideas = ideas.filter(x => x.id !== id);
+      saveIdeas(); renderIdeas();
+    } else {
+      convertingIdeaId = id;
+      closeDrawer();
+      openModal(null, { title: idea.text });
+    }
+    return;
   }
+  if (e.target.closest("p")) startIdeaEdit(li); // 点击文字进入行内编辑
 });
+
+/* 想法行内编辑：点文字变输入框，回车/失焦保存，Esc 取消 */
+function startIdeaEdit(li) {
+  if (li.querySelector(".idea-edit")) return;
+  const idea = ideas.find(x => x.id === li.dataset.id);
+  if (!idea) return;
+  const p = li.querySelector("p");
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = idea.text;
+  input.maxLength = 120;
+  input.className = "idea-edit";
+  p.replaceWith(input);
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+  let settled = false;
+  const commit = () => {
+    if (settled) return;
+    settled = true;
+    const v = input.value.trim();
+    if (v && v !== idea.text) { idea.text = v; saveIdeas(); }
+    renderIdeas();
+  };
+  input.addEventListener("keydown", ev => {
+    ev.stopPropagation(); // 隔离全局快捷键（Esc 关抽屉、⌘Z 等）
+    if (ev.key === "Enter") commit();
+    if (ev.key === "Escape") { settled = true; renderIdeas(); }
+  });
+  input.addEventListener("blur", commit);
+}
 
 /* ---------- 设置：深度目标 / 导出导入 ---------- */
 const settingsPop = document.getElementById("settingsPop");
